@@ -102,21 +102,30 @@ std::unique_ptr<effect_stream> duplicateEffect(const effect_stream* effectStream
 }  // namespace
 
 const struct effect_stream* get_effect_stream(uint32_t effectId) {
+    // 1. CRISP VOLUME PANEL: If the framework requests a standard light TICK (2),
+    // immediately hijack it and return a premium HEAVY_CLICK (5) so it matches your keyboard.
+    if (effectId == (uint32_t)Effect::TICK) {
+        return get_effect_stream((uint32_t)Effect::HEAVY_CLICK);
+    }
+
     auto it = sEffectStreams.find(effectId);
     if (it == sEffectStreams.end()) {
-        std::unique_ptr<effect_stream> newEffectStream = readEffectStreamFromFile(effectId);
+        std::unique_ptr<effect_stream> newEffectStream;
+
+        // 2. FALSE FINGERPRINT DOUBLE VIBRATION: If a wrong fingerprint requests DOUBLE_CLICK (1),
+        // bypass the broken single-pulse effect_1.bin file completely. Force the built-in 
+        // duplicateEffect function to stitch two clean clicks together with a mathematical hardware delay.
+        if (effectId == (uint32_t)Effect::DOUBLE_CLICK) {
+            newEffectStream = duplicateEffect(get_effect_stream((uint32_t)Effect::CLICK),
+                                              (uint32_t)Effect::DOUBLE_CLICK);
+        } else {
+            // Read from the local .bin configuration normally for all other effects
+            newEffectStream = readEffectStreamFromFile(effectId);
+        }
 
         if (newEffectStream) {
             auto result = sEffectStreams.emplace(effectId, *newEffectStream);
             return &result.first->second;
-        } else if (effectId == (uint32_t)Effect::DOUBLE_CLICK) {
-            LOG(VERBOSE) << "Could not get double click effect, duplicating click effect";
-            newEffectStream = duplicateEffect(get_effect_stream((uint32_t)Effect::CLICK),
-                                              (uint32_t)Effect::DOUBLE_CLICK);
-            if (newEffectStream) {
-                auto result = sEffectStreams.emplace(effectId, *newEffectStream);
-                return &result.first->second;
-            }
         } else if (effectId != (uint32_t)Effect::CLICK) {
             LOG(VERBOSE) << "Could not get effect " << effectId << ", falling back to click effect";
             return get_effect_stream((uint32_t)Effect::CLICK);
