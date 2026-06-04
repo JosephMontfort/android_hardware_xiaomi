@@ -104,19 +104,22 @@ std::unique_ptr<effect_stream> duplicateEffect(const effect_stream* effectStream
 const struct effect_stream* get_effect_stream(uint32_t effectId) {
     auto it = sEffectStreams.find(effectId);
     if (it == sEffectStreams.end()) {
-        std::unique_ptr<effect_stream> newEffectStream = readEffectStreamFromFile(effectId);
+        std::unique_ptr<effect_stream> newEffectStream;
+
+        // NEW LOGIC: Intercept DOUBLE_CLICK first to force the duplicate function.
+        // This guarantees two distinct vibrations, ignoring Xiaomi's single-vibration .bin
+        if (effectId == (uint32_t)Effect::DOUBLE_CLICK) {
+            LOG(VERBOSE) << "Forcing duplicated click for double click effect";
+            newEffectStream = duplicateEffect(get_effect_stream((uint32_t)Effect::CLICK),
+                                              (uint32_t)Effect::DOUBLE_CLICK);
+        } else {
+            // Read normally from .bin files for all other effects
+            newEffectStream = readEffectStreamFromFile(effectId);
+        }
 
         if (newEffectStream) {
             auto result = sEffectStreams.emplace(effectId, *newEffectStream);
             return &result.first->second;
-        } else if (effectId == (uint32_t)Effect::DOUBLE_CLICK) {
-            LOG(VERBOSE) << "Could not get double click effect, duplicating click effect";
-            newEffectStream = duplicateEffect(get_effect_stream((uint32_t)Effect::CLICK),
-                                              (uint32_t)Effect::DOUBLE_CLICK);
-            if (newEffectStream) {
-                auto result = sEffectStreams.emplace(effectId, *newEffectStream);
-                return &result.first->second;
-            }
         } else if (effectId != (uint32_t)Effect::CLICK) {
             LOG(VERBOSE) << "Could not get effect " << effectId << ", falling back to click effect";
             return get_effect_stream((uint32_t)Effect::CLICK);
